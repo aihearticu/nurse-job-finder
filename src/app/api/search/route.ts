@@ -56,7 +56,7 @@ function parseExaText(text: string): ExaResult[] {
   for (const block of blocks) {
     if (!block.trim()) continue;
     
-    const titleMatch = block.match(/Title:\s*(.+?)(?:\n|Author:)/s);
+    const titleMatch = block.match(/Title:\s*(.+?)(?:\n|Author:)/);
     const urlMatch = block.match(/URL:\s*(.+?)(?:\n|$)/);
     const dateMatch = block.match(/Published Date:\s*(.+?)(?:\n|$)/);
     const textMatch = block.match(/Text:\s*([\s\S]+?)(?=Title:|$)/);
