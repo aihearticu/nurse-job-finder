@@ -16,8 +16,11 @@ const HOSPITALS = [
   { value: 'kaiser', label: 'Kaiser Permanente' },
   { value: 'sutter', label: 'Sutter Health' },
   { value: 'ucsf', label: 'UCSF Medical Center' },
+  { value: 'sfgeneral', label: 'SF General / Zuckerberg' },
+  { value: 'sfcounty', label: 'SF County / DPH' },
   { value: 'stanford', label: 'Stanford Health Care' },
   { value: 'dignity', label: 'Dignity Health' },
+  { value: 'johnmuir', label: 'John Muir Health' },
   { value: 'any', label: 'Any Hospital' },
 ];
 

@@ -5,8 +5,11 @@ const HOSPITAL_NAMES: Record<string, string> = {
   kaiser: 'Kaiser Permanente',
   sutter: 'Sutter Health',
   ucsf: 'UCSF Medical Center',
+  sfgeneral: 'Zuckerberg San Francisco General Hospital',
+  sfcounty: 'San Francisco Department of Public Health',
   stanford: 'Stanford Health Care',
   dignity: 'Dignity Health',
+  johnmuir: 'John Muir Health',
   any: '',
 };
 
@@ -135,6 +138,13 @@ function extractFacility(title: string, text: string): string {
     'Sutter Health',
     'Sutter',
     'UCSF',
+    'Zuckerberg San Francisco General',
+    'SF General',
+    'SFGH',
+    'San Francisco General',
+    'SF Department of Public Health',
+    'SF DPH',
+    'SFDPH',
     'Stanford Health',
     'Stanford',
     'Dignity Health',
@@ -147,6 +157,7 @@ function extractFacility(title: string, text: string): string {
     'Incredible Health',
     'Aya Healthcare',
     'Cross Country',
+    'Laguna Honda',
   ];
 
   const combined = `${title} ${text}`;
