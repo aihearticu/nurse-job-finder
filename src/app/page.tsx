@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useRef } from 'react';
 
 interface Job {
   title: string;
@@ -45,10 +45,14 @@ export default function Home() {
   const [hospitals, setHospitals] = useState<string[]>(['kaiser', 'sutter', 'ucsf']);
   const [units, setUnits] = useState<string[]>(['icu', 'pcu', 'tele']);
   const [jobTypes, setJobTypes] = useState<string[]>(['staff', 'per-diem']);
-  const [location, setLocation] = useState('San Francisco Bay Area');
+  const [location, setLocation] = useState('San Francisco, CA');
   const [loading, setLoading] = useState(false);
   const [jobs, setJobs] = useState<Job[]>([]);
   const [error, setError] = useState('');
+  const [resumeFile, setResumeFile] = useState<File | null>(null);
+  const [autoApplyEnabled, setAutoApplyEnabled] = useState(false);
+  const [applyingTo, setApplyingTo] = useState<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const toggleSelection = (
     value: string,
@@ -59,6 +63,41 @@ export default function Home() {
       setter(current.filter((v) => v !== value));
     } else {
       setter([...current, value]);
+    }
+  };
+
+  const handleAutoApply = async (job: Job) => {
+    if (!resumeFile) {
+      setError('Please upload your resume first');
+      return;
+    }
+    
+    setApplyingTo(job.url);
+    setError('');
+    
+    try {
+      const formData = new FormData();
+      formData.append('resume', resumeFile);
+      formData.append('jobUrl', job.url);
+      formData.append('jobTitle', job.title);
+      formData.append('facility', job.facility);
+      
+      const res = await fetch('/api/auto-apply', {
+        method: 'POST',
+        body: formData,
+      });
+      
+      const data = await res.json();
+      
+      if (!res.ok) {
+        throw new Error(data.error || 'Auto-apply failed');
+      }
+      
+      alert(`✅ Application submitted to ${job.facility}!\n\nCheck your email for confirmation.`);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Auto-apply failed');
+    } finally {
+      setApplyingTo(null);
     }
   };
 
@@ -97,7 +136,7 @@ export default function Home() {
             🏥 NurseJobFinder
           </h1>
           <p className="text-gray-600">
-            Find nursing jobs at top Bay Area hospitals
+            Find nursing jobs at top hospitals • Auto-apply coming soon
           </p>
         </div>
 
@@ -183,6 +222,53 @@ export default function Home() {
             </div>
           </div>
 
+          {/* Resume Upload for Auto-Apply */}
+          <div className="mb-6 p-4 bg-gradient-to-r from-purple-50 to-blue-50 rounded-lg border border-purple-200">
+            <div className="flex items-center justify-between mb-3">
+              <label className="block text-sm font-medium text-gray-700">
+                🤖 Auto-Apply (Beta)
+              </label>
+              <label className="flex items-center cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={autoApplyEnabled}
+                  onChange={(e) => setAutoApplyEnabled(e.target.checked)}
+                  className="sr-only"
+                />
+                <div className={`w-11 h-6 rounded-full transition-colors ${autoApplyEnabled ? 'bg-purple-600' : 'bg-gray-300'}`}>
+                  <div className={`w-5 h-5 bg-white rounded-full shadow transform transition-transform ${autoApplyEnabled ? 'translate-x-5' : 'translate-x-0.5'} mt-0.5`} />
+                </div>
+              </label>
+            </div>
+            
+            {autoApplyEnabled && (
+              <div className="space-y-3">
+                <div>
+                  <input
+                    ref={fileInputRef}
+                    type="file"
+                    accept=".pdf,.doc,.docx"
+                    onChange={(e) => setResumeFile(e.target.files?.[0] || null)}
+                    className="hidden"
+                  />
+                  <button
+                    onClick={() => fileInputRef.current?.click()}
+                    className="w-full py-2 px-4 border-2 border-dashed border-purple-300 rounded-lg text-purple-600 hover:border-purple-500 hover:bg-purple-50 transition-colors"
+                  >
+                    {resumeFile ? (
+                      <span>📄 {resumeFile.name}</span>
+                    ) : (
+                      <span>📤 Upload Resume (PDF)</span>
+                    )}
+                  </button>
+                </div>
+                <p className="text-xs text-gray-500">
+                  When enabled, clicking &quot;Apply&quot; will auto-fill applications using your resume via Browserbase.
+                </p>
+              </div>
+            )}
+          </div>
+
           {/* Search Button */}
           <button
             onClick={searchJobs}
@@ -251,14 +337,25 @@ export default function Home() {
                   <p className="text-gray-600 text-sm mb-3 line-clamp-2">
                     {job.snippet}
                   </p>
-                  <a
-                    href={job.url}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="inline-block px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded hover:bg-blue-700 transition-colors"
-                  >
-                    View & Apply →
-                  </a>
+                  <div className="flex gap-2">
+                    <a
+                      href={job.url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-block px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded hover:bg-blue-700 transition-colors"
+                    >
+                      View →
+                    </a>
+                    {autoApplyEnabled && resumeFile && (
+                      <button
+                        onClick={() => handleAutoApply(job)}
+                        disabled={applyingTo === job.url}
+                        className="px-4 py-2 bg-purple-600 text-white text-sm font-medium rounded hover:bg-purple-700 disabled:bg-purple-400 transition-colors"
+                      >
+                        {applyingTo === job.url ? '⏳ Applying...' : '🤖 Auto Apply'}
+                      </button>
+                    )}
+                  </div>
                 </div>
               ))}
             </div>
@@ -281,6 +378,13 @@ export default function Home() {
             className="text-blue-500 hover:underline"
           >
             Mentius
+          </a>
+          {' '}by{' '}
+          <a
+            href="https://twitter.com/AIHeartICU"
+            className="text-blue-500 hover:underline"
+          >
+            @AIHeartICU
           </a>
         </footer>
       </div>
