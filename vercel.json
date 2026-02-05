@@ -1,8 +1,5 @@
 {
   "buildCommand": "npm run build",
   "outputDirectory": ".next",
-  "framework": "nextjs",
-  "env": {
-    "BRAVE_API_KEY": "@brave-api-key"
-  }
+  "framework": "nextjs"
 }
