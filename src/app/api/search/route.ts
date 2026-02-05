@@ -1,77 +1,39 @@
 import { NextRequest, NextResponse } from 'next/server';
 
-// Exa MCP endpoint (free, no API key needed)
-const EXA_MCP_URL = 'https://mcp.exa.ai/mcp';
+const BRAVE_API_KEY = process.env.BRAVE_API_KEY;
 
-interface ExaResult {
+interface BraveResult {
   title: string;
   url: string;
-  text?: string;
-  publishedDate?: string;
+  description: string;
+  age?: string;
 }
 
-async function searchExa(query: string, numResults: number = 15): Promise<ExaResult[]> {
-  // Call Exa MCP via JSON-RPC
-  const response = await fetch(EXA_MCP_URL, {
-    method: 'POST',
+async function searchBrave(query: string, count: number = 20): Promise<BraveResult[]> {
+  if (!BRAVE_API_KEY) {
+    throw new Error('BRAVE_API_KEY not configured');
+  }
+
+  const params = new URLSearchParams({
+    q: query,
+    count: count.toString(),
+    freshness: 'pm',
+    country: 'US',
+  });
+
+  const response = await fetch(`https://api.search.brave.com/res/v1/web/search?${params}`, {
     headers: {
-      'Content-Type': 'application/json',
+      'Accept': 'application/json',
+      'X-Subscription-Token': BRAVE_API_KEY,
     },
-    body: JSON.stringify({
-      jsonrpc: '2.0',
-      id: 1,
-      method: 'tools/call',
-      params: {
-        name: 'web_search_exa',
-        arguments: {
-          query,
-          numResults,
-          livecrawl: 'preferred',
-        },
-      },
-    }),
   });
 
   if (!response.ok) {
-    console.error('Exa MCP error:', response.status);
-    return [];
+    throw new Error(`Brave API error: ${response.status}`);
   }
 
   const data = await response.json();
-  
-  // Parse the MCP response
-  if (data.result?.content?.[0]?.text) {
-    return parseExaText(data.result.content[0].text);
-  }
-  
-  return [];
-}
-
-function parseExaText(text: string): ExaResult[] {
-  const results: ExaResult[] = [];
-  
-  // Split by "Title:" markers
-  const blocks = text.split(/(?=Title:)/);
-  
-  for (const block of blocks) {
-    if (!block.trim()) continue;
-    
-    const titleMatch = block.match(/Title:\s*(.+?)(?:\n|Author:)/);
-    const urlMatch = block.match(/URL:\s*(.+?)(?:\n|$)/);
-    const dateMatch = block.match(/Published Date:\s*(.+?)(?:\n|$)/);
-    const textMatch = block.match(/Text:\s*([\s\S]+?)(?=Title:|$)/);
-    
-    if (titleMatch && urlMatch) {
-      results.push({
-        title: titleMatch[1].trim(),
-        url: urlMatch[1].trim(),
-        text: textMatch ? textMatch[1].trim() : '',
-        publishedDate: dateMatch ? dateMatch[1].trim() : undefined,
-      });
-    }
-  }
-  
-  return results;
+  return data.web?.results || [];
 }
 
 function extractPay(text: string): { display: string; numeric: number } | null {
@@ -86,16 +48,9 @@ function extractPay(text: string): { display: string; numeric: number } | null {
       if (match[2]) {
         const low = parseFloat(match[1]);
         const high = parseFloat(match[2]);
-        return {
-          display: `$${match[1]} - $${match[2]}/hr`,
-          numeric: (low + high) / 2,
-        };
-      } else {
-        return {
-          display: `$${match[1]}/hr`,
-          numeric: parseFloat(match[1]),
-        };
+        return { display: `$${match[1]} - $${match[2]}/hr`, numeric: (low + high) / 2 };
       }
+      return { display: `$${match[1]}/hr`, numeric: parseFloat(match[1]) };
     }
   }
   return null;
@@ -113,13 +68,12 @@ function extractFacility(title: string, text: string): string {
     { pattern: /sharp/i, name: 'Sharp Healthcare' },
     { pattern: /vivian/i, name: 'Vivian Health' },
     { pattern: /amn/i, name: 'AMN Healthcare' },
+    { pattern: /incredible/i, name: 'Incredible Health' },
   ];
 
   const combined = `${title} ${text}`;
   for (const f of facilities) {
-    if (f.pattern.test(combined)) {
-      return f.name;
-    }
+    if (f.pattern.test(combined)) return f.name;
   }
   return 'Healthcare Facility';
 }
@@ -136,10 +90,10 @@ function extractJobType(text: string): string {
 function extractUnit(text: string): string {
   const lower = text.toLowerCase();
   if (lower.includes('icu') || lower.includes('intensive care') || lower.includes('critical care')) return 'ICU';
-  if (lower.includes('pcu') || lower.includes('stepdown') || lower.includes('step-down') || lower.includes('progressive')) return 'PCU/Stepdown';
+  if (lower.includes('pcu') || lower.includes('stepdown') || lower.includes('progressive')) return 'PCU/Stepdown';
   if (lower.includes('telemetry') || lower.includes('tele')) return 'Telemetry';
   if (lower.includes('emergency') || lower.includes(' er ') || lower.includes(' ed ')) return 'Emergency';
-  if (lower.includes('med-surg') || lower.includes('med/surg') || lower.includes('medical surgical')) return 'Med-Surg';
+  if (lower.includes('med-surg') || lower.includes('med/surg')) return 'Med-Surg';
   if (lower.includes('nicu') || lower.includes('neonatal')) return 'NICU';
   if (lower.includes('cardiac') || lower.includes('cath')) return 'Cardiac';
   return 'General';
@@ -151,64 +105,51 @@ export async function POST(request: NextRequest) {
     const { hospitals, units, jobTypes, location } = body;
 
     if (!location) {
-      return NextResponse.json(
-        { error: 'Location is required' },
-        { status: 400 }
-      );
+      return NextResponse.json({ error: 'Location is required' }, { status: 400 });
     }
 
     // Build search query
     const hospitalNames = hospitals?.filter((h: string) => h !== 'any').slice(0, 2) || [];
-    const unitNames = units?.slice(0, 2) || ['ICU', 'RN'];
-    const typeTerms = jobTypes?.includes('per-diem') ? 'per diem PRN' : '';
+    const unitNames = units?.map((u: string) => {
+      const map: Record<string, string> = { icu: 'ICU', pcu: 'PCU stepdown', tele: 'telemetry', er: 'emergency', medsurg: 'med-surg' };
+      return map[u] || u;
+    }).slice(0, 2) || ['ICU'];
     
-    const query = `${unitNames.join(' ')} RN nurse jobs ${location} ${hospitalNames.join(' ')} ${typeTerms} hiring 2025 2026`.trim();
-    
+    const query = `${unitNames.join(' OR ')} RN nurse jobs ${location} ${hospitalNames.join(' ')} hiring 2025 2026`.trim();
     console.log('Search query:', query);
 
-    // Search with Exa
-    const results = await searchExa(query, 20);
-    console.log('Exa results:', results.length);
+    const results = await searchBrave(query, 25);
+    console.log('Brave results:', results.length);
 
-    // Transform to job listings
     const jobs = results
       .map((result) => {
-        const combined = `${result.title} ${result.text || ''}`;
+        const combined = `${result.title} ${result.description}`;
         const pay = extractPay(combined);
-        
+
         return {
-          title: result.title.replace(/\s*\|.*$/, '').replace(/\s*at\s+\w+\s*$/, '').trim(),
-          facility: extractFacility(result.title, result.text || ''),
-          location: location,
+          title: result.title.replace(/\s*\|.*$/, '').replace(/\s*-\s*[^-]+$/, '').trim(),
+          facility: extractFacility(result.title, result.description),
+          location,
           pay: pay?.display || '',
           payNumeric: pay?.numeric || 0,
           type: extractJobType(combined),
           unit: extractUnit(combined),
           url: result.url,
-          snippet: (result.text || '').slice(0, 200),
-          postedDate: result.publishedDate,
+          snippet: result.description.slice(0, 200),
         };
       })
-      // Filter to nursing jobs only
       .filter((job) => {
-        const combined = `${job.title} ${job.snippet}`.toLowerCase();
+        const combined = `${job.title} ${job.snippet} ${job.url}`.toLowerCase();
         const isNursing = /nurse|nursing|\brn\b|registered|icu|pcu|telemetry|critical care/i.test(combined);
-        const isNotArticle = !/news|article|school|program|salary guide|highest paid/i.test(combined);
-        return isNursing && isNotArticle;
+        const looksLikeJob = /hiring|apply|job|position|career|opportunity|jobs\./i.test(combined);
+        const isNotArticle = !/news|school|program|salary guide|highest paid|killed|protest/i.test(combined);
+        return isNursing && looksLikeJob && isNotArticle;
       })
-      // Sort by pay (highest first)
       .sort((a, b) => b.payNumeric - a.payNumeric);
 
-    return NextResponse.json({
-      jobs,
-      query,
-      total: jobs.length,
-    });
+    return NextResponse.json({ jobs, query, total: jobs.length });
   } catch (error) {
     console.error('Search error:', error);
-    return NextResponse.json(
-      { error: error instanceof Error ? error.message : 'Search failed' },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: error instanceof Error ? error.message : 'Search failed' }, { status: 500 });
   }
 }
