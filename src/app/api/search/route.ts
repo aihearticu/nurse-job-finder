@@ -59,7 +59,7 @@ export async function POST(request: NextRequest) {
     const selectedUnits = units.map((u: string) => unitMap[u] || u);
     
     let filteredJobs = allJobs.filter(job => 
-      selectedUnits.some(unit => job.unit.toLowerCase().includes(unit.toLowerCase()))
+      selectedUnits.some((unit: string) => job.unit.toLowerCase().includes(unit.toLowerCase()))
     );
 
     // Filter by job type
@@ -73,7 +73,7 @@ export async function POST(request: NextRequest) {
     const selectedTypes = jobTypes.flatMap((t: string) => typeMap[t] || [t]);
     
     filteredJobs = filteredJobs.filter(job =>
-      selectedTypes.some(type => job.type.toLowerCase().includes(type.toLowerCase()))
+      selectedTypes.some((type: string) => job.type.toLowerCase().includes(type.toLowerCase()))
     );
 
     // Add snippet and payNumeric
