@@ -1,196 +1,148 @@
 import { NextRequest, NextResponse } from 'next/server';
 
-// Hospital name mappings for search
-const HOSPITAL_NAMES: Record<string, string> = {
-  kaiser: 'Kaiser Permanente',
-  sutter: 'Sutter Health',
-  ucsf: 'UCSF Medical Center',
-  sfgeneral: 'Zuckerberg SF General Hospital SFGH',
-  sfcounty: 'San Francisco city county DPH',
-  stanford: 'Stanford Health Care',
-  dignity: 'Dignity Health',
-  johnmuir: 'John Muir Health',
-  any: '',
-};
+// Exa MCP endpoint (free, no API key needed)
+const EXA_MCP_URL = 'https://mcp.exa.ai/mcp';
 
-// Unit name mappings
-const UNIT_NAMES: Record<string, string[]> = {
-  icu: ['ICU', 'intensive care', 'critical care'],
-  pcu: ['PCU', 'stepdown', 'progressive care'],
-  dou: ['DOU', 'observation'],
-  tele: ['telemetry', 'tele'],
-  er: ['emergency', 'ER', 'ED'],
-  medsurg: ['med-surg', 'medical surgical'],
-};
-
-// Job type mappings
-const JOB_TYPE_NAMES: Record<string, string[]> = {
-  staff: ['staff nurse', 'full-time'],
-  'per-diem': ['per diem', 'PRN'],
-  travel: ['travel nurse', 'travel nursing'],
-  contract: ['contract'],
-  any: [],
-};
-
-interface BraveResult {
+interface ExaResult {
   title: string;
   url: string;
-  description: string;
-  age?: string;
+  text?: string;
+  publishedDate?: string;
 }
 
-interface BraveResponse {
-  web?: {
-    results: BraveResult[];
-  };
-}
-
-async function searchBrave(query: string, count: number = 15): Promise<BraveResult[]> {
-  const BRAVE_API_KEY = process.env.BRAVE_API_KEY;
-  
-  if (!BRAVE_API_KEY) {
-    throw new Error('BRAVE_API_KEY not configured');
-  }
-
-  const params = new URLSearchParams({
-    q: query,
-    count: count.toString(),
-    freshness: 'pm', // Past month
-    country: 'US',
-  });
-
-  const response = await fetch(`https://api.search.brave.com/res/v1/web/search?${params}`, {
+async function searchExa(query: string, numResults: number = 15): Promise<ExaResult[]> {
+  // Call Exa MCP via JSON-RPC
+  const response = await fetch(EXA_MCP_URL, {
+    method: 'POST',
     headers: {
-      'Accept': 'application/json',
-      'X-Subscription-Token': BRAVE_API_KEY,
+      'Content-Type': 'application/json',
     },
+    body: JSON.stringify({
+      jsonrpc: '2.0',
+      id: 1,
+      method: 'tools/call',
+      params: {
+        name: 'web_search_exa',
+        arguments: {
+          query,
+          numResults,
+          livecrawl: 'preferred',
+        },
+      },
+    }),
   });
 
   if (!response.ok) {
-    const error = await response.text();
-    throw new Error(`Brave API error: ${response.status} - ${error}`);
+    console.error('Exa MCP error:', response.status);
+    return [];
   }
 
-  const data: BraveResponse = await response.json();
-  return data.web?.results || [];
-}
-
-function buildSearchQuery(
-  hospitals: string[],
-  units: string[],
-  jobTypes: string[],
-  location: string
-): string {
-  // Keep it simple for better Brave results
-  const parts: string[] = [];
-
-  // Core: location + nursing jobs
-  parts.push(`${location} nursing jobs RN`);
-
-  // Add ONE hospital if specific (not "any")
-  const hospitalNames = hospitals
-    .filter((h) => h !== 'any')
-    .map((h) => HOSPITAL_NAMES[h])
-    .filter(Boolean);
+  const data = await response.json();
   
-  if (hospitalNames.length === 1) {
-    parts.push(hospitalNames[0]);
+  // Parse the MCP response
+  if (data.result?.content?.[0]?.text) {
+    return parseExaText(data.result.content[0].text);
   }
-
-  // Add ONE unit type
-  const unitTerms = units.map((u) => UNIT_NAMES[u]?.[0]).filter(Boolean);
-  if (unitTerms.length > 0) {
-    parts.push(unitTerms[0]); // Just first one to keep query simple
-  }
-
-  // Job types - add if specific
-  if (jobTypes.includes('per-diem') && !jobTypes.includes('staff')) {
-    parts.push('per diem');
-  }
-  if (jobTypes.includes('travel')) {
-    parts.push('travel');
-  }
-
-  return parts.join(' ');
+  
+  return [];
 }
 
-function extractPay(text: string): string | null {
+function parseExaText(text: string): ExaResult[] {
+  const results: ExaResult[] = [];
+  
+  // Split by "Title:" markers
+  const blocks = text.split(/(?=Title:)/);
+  
+  for (const block of blocks) {
+    if (!block.trim()) continue;
+    
+    const titleMatch = block.match(/Title:\s*(.+?)(?:\n|Author:)/s);
+    const urlMatch = block.match(/URL:\s*(.+?)(?:\n|$)/);
+    const dateMatch = block.match(/Published Date:\s*(.+?)(?:\n|$)/);
+    const textMatch = block.match(/Text:\s*([\s\S]+?)(?=Title:|$)/);
+    
+    if (titleMatch && urlMatch) {
+      results.push({
+        title: titleMatch[1].trim(),
+        url: urlMatch[1].trim(),
+        text: textMatch ? textMatch[1].trim() : '',
+        publishedDate: dateMatch ? dateMatch[1].trim() : undefined,
+      });
+    }
+  }
+  
+  return results;
+}
+
+function extractPay(text: string): { display: string; numeric: number } | null {
   const patterns = [
-    /\$[\d,]+(?:\.\d{2})?\s*[-–]\s*\$[\d,]+(?:\.\d{2})?\s*(?:\/hr|\/hour|per hour|hourly)?/i,
-    /\$[\d,]+(?:\.\d{2})?\s*(?:\/hr|\/hour|per hour|hourly)/i,
-    /\$[\d,]+(?:\.\d{2})?\s*[-–]\s*\$[\d,]+(?:\.\d{2})?\s*(?:\/wk|\/week|per week|weekly)/i,
-    /\$[\d,]+\s*[-–]\s*\$[\d,]+\s*(?:per|a)\s*(?:hour|week|year)/i,
-    /\$[\d,]+\+?\s*(?:\/hr|\/hour|per hour)/i,
+    /\$(\d+(?:\.\d{2})?)\s*[-–to]+\s*\$?(\d+(?:\.\d{2})?)\s*(?:\/\s*(?:hr|hour)|per hour|hourly)?/i,
+    /\$(\d+(?:\.\d{2})?)\s*(?:\/\s*(?:hr|hour)|per hour|hourly)/i,
   ];
 
   for (const pattern of patterns) {
     const match = text.match(pattern);
-    if (match) return match[0];
+    if (match) {
+      if (match[2]) {
+        const low = parseFloat(match[1]);
+        const high = parseFloat(match[2]);
+        return {
+          display: `$${match[1]} - $${match[2]}/hr`,
+          numeric: (low + high) / 2,
+        };
+      } else {
+        return {
+          display: `$${match[1]}/hr`,
+          numeric: parseFloat(match[1]),
+        };
+      }
+    }
   }
-
   return null;
 }
 
 function extractFacility(title: string, text: string): string {
-  const hospitals = [
-    'Kaiser Permanente',
-    'Kaiser',
-    'Sutter Health',
-    'Sutter',
-    'UCSF',
-    'Zuckerberg San Francisco General',
-    'SF General',
-    'SFGH',
-    'San Francisco General',
-    'SF Department of Public Health',
-    'SF DPH',
-    'SFDPH',
-    'Stanford Health',
-    'Stanford',
-    'Dignity Health',
-    'John Muir',
-    'Alta Bates',
-    'El Camino',
-    'Good Samaritan',
-    'Regional Medical',
-    'AMN Healthcare',
-    'Incredible Health',
-    'Aya Healthcare',
-    'Cross Country',
-    'Laguna Honda',
+  const facilities = [
+    { pattern: /kaiser/i, name: 'Kaiser Permanente' },
+    { pattern: /sutter/i, name: 'Sutter Health' },
+    { pattern: /ucsf/i, name: 'UCSF Medical Center' },
+    { pattern: /stanford/i, name: 'Stanford Health Care' },
+    { pattern: /sf general|zuckerberg/i, name: 'SF General' },
+    { pattern: /dignity/i, name: 'Dignity Health' },
+    { pattern: /john muir/i, name: 'John Muir Health' },
+    { pattern: /sharp/i, name: 'Sharp Healthcare' },
+    { pattern: /vivian/i, name: 'Vivian Health' },
+    { pattern: /amn/i, name: 'AMN Healthcare' },
   ];
 
   const combined = `${title} ${text}`;
-  for (const hospital of hospitals) {
-    if (combined.toLowerCase().includes(hospital.toLowerCase())) {
-      return hospital;
+  for (const f of facilities) {
+    if (f.pattern.test(combined)) {
+      return f.name;
     }
   }
-
-  // Try to extract from URL patterns
-  if (combined.includes('indeed')) return 'Indeed';
-  if (combined.includes('linkedin')) return 'LinkedIn';
-  if (combined.includes('glassdoor')) return 'Glassdoor';
-  if (combined.includes('ziprecruiter')) return 'ZipRecruiter';
-
   return 'Healthcare Facility';
 }
 
 function extractJobType(text: string): string {
   const lower = text.toLowerCase();
-  if (lower.includes('travel')) return 'Travel';
   if (lower.includes('per diem') || lower.includes('prn')) return 'Per Diem';
-  if (lower.includes('contract') && !lower.includes('travel')) return 'Contract';
-  if (lower.includes('full-time') || lower.includes('permanent')) return 'Full-time';
+  if (lower.includes('travel')) return 'Travel';
+  if (lower.includes('contract')) return 'Contract';
   if (lower.includes('part-time')) return 'Part-time';
-  return 'Staff';
+  return 'Full-time';
 }
 
-function extractLocation(text: string, defaultLocation: string): string {
-  // Try to find city, CA pattern
-  const match = text.match(/([A-Z][a-z]+(?:\s+[A-Z][a-z]+)?),?\s*(?:CA|California)/i);
-  if (match) return match[0];
-  return defaultLocation;
+function extractUnit(text: string): string {
+  const lower = text.toLowerCase();
+  if (lower.includes('icu') || lower.includes('intensive care') || lower.includes('critical care')) return 'ICU';
+  if (lower.includes('pcu') || lower.includes('stepdown') || lower.includes('step-down') || lower.includes('progressive')) return 'PCU/Stepdown';
+  if (lower.includes('telemetry') || lower.includes('tele')) return 'Telemetry';
+  if (lower.includes('emergency') || lower.includes(' er ') || lower.includes(' ed ')) return 'Emergency';
+  if (lower.includes('med-surg') || lower.includes('med/surg') || lower.includes('medical surgical')) return 'Med-Surg';
+  if (lower.includes('nicu') || lower.includes('neonatal')) return 'NICU';
+  if (lower.includes('cardiac') || lower.includes('cath')) return 'Cardiac';
+  return 'General';
 }
 
 export async function POST(request: NextRequest) {
@@ -198,133 +150,59 @@ export async function POST(request: NextRequest) {
     const body = await request.json();
     const { hospitals, units, jobTypes, location } = body;
 
-    if (!hospitals?.length || !units?.length || !location) {
+    if (!location) {
       return NextResponse.json(
-        { error: 'Missing required fields' },
+        { error: 'Location is required' },
         { status: 400 }
       );
     }
 
-    // Build multiple search queries for better coverage
-    const queries: string[] = [];
+    // Build search query
+    const hospitalNames = hospitals?.filter((h: string) => h !== 'any').slice(0, 2) || [];
+    const unitNames = units?.slice(0, 2) || ['ICU', 'RN'];
+    const typeTerms = jobTypes?.includes('per-diem') ? 'per diem PRN' : '';
     
-    // Create queries for each hospital (or general if "any")
-    const hospitalList = hospitals.includes('any') 
-      ? ['any'] 
-      : hospitals;
+    const query = `${unitNames.join(' ')} RN nurse jobs ${location} ${hospitalNames.join(' ')} ${typeTerms} hiring 2025 2026`.trim();
     
-    // Primary unit to search
-    const primaryUnit = units[0];
-    
-    for (const hospital of hospitalList.slice(0, 3)) {
-      const query = buildSearchQuery([hospital], [primaryUnit], jobTypes, location);
-      queries.push(query);
-    }
-    
-    // Add one more query for secondary unit if exists
-    if (units.length > 1) {
-      queries.push(buildSearchQuery(['any'], [units[1]], jobTypes, location));
-    }
+    console.log('Search query:', query);
 
-    console.log('Search queries:', queries);
+    // Search with Exa
+    const results = await searchExa(query, 20);
+    console.log('Exa results:', results.length);
 
-    // Run searches in parallel
-    const allResultsArrays = await Promise.all(
-      queries.map(q => searchBrave(q, 10).catch(() => []))
-    );
-    
-    // Flatten and dedupe by URL
-    const seenUrls = new Set<string>();
-    const results: BraveResult[] = [];
-    for (const arr of allResultsArrays) {
-      for (const result of arr) {
-        if (!seenUrls.has(result.url)) {
-          seenUrls.add(result.url);
-          results.push(result);
-        }
-      }
-    }
-    
-    console.log('Total Brave results:', results.length);
+    // Transform to job listings
+    const jobs = results
+      .map((result) => {
+        const combined = `${result.title} ${result.text || ''}`;
+        const pay = extractPay(combined);
+        
+        return {
+          title: result.title.replace(/\s*\|.*$/, '').replace(/\s*at\s+\w+\s*$/, '').trim(),
+          facility: extractFacility(result.title, result.text || ''),
+          location: location,
+          pay: pay?.display || '',
+          payNumeric: pay?.numeric || 0,
+          type: extractJobType(combined),
+          unit: extractUnit(combined),
+          url: result.url,
+          snippet: (result.text || '').slice(0, 200),
+          postedDate: result.publishedDate,
+        };
+      })
+      // Filter to nursing jobs only
+      .filter((job) => {
+        const combined = `${job.title} ${job.snippet}`.toLowerCase();
+        const isNursing = /nurse|nursing|\brn\b|registered|icu|pcu|telemetry|critical care/i.test(combined);
+        const isNotArticle = !/news|article|school|program|salary guide|highest paid/i.test(combined);
+        return isNursing && isNotArticle;
+      })
+      // Sort by pay (highest first)
+      .sort((a, b) => b.payNumeric - a.payNumeric);
 
-    // Transform results into job listings
-    const jobs = results.map((result) => {
-      const text = `${result.title} ${result.description}`;
-      return {
-        title: result.title.replace(/\s*\|.*$/, '').replace(/\s*-\s*[^-]+$/, '').trim() || 'Nursing Position',
-        facility: extractFacility(result.title, result.description),
-        location: extractLocation(text, location),
-        pay: extractPay(text) || '',
-        type: extractJobType(text),
-        url: result.url,
-        snippet: result.description.slice(0, 250) + (result.description.length > 250 ? '...' : ''),
-        age: result.age,
-      };
-    });
-
-    // Filter to only actual job postings (not news, schools, articles)
-    const nursingJobs = jobs.filter((job) => {
-      const combined = `${job.title} ${job.snippet} ${job.url}`.toLowerCase();
-      
-      // Must be nursing related
-      const isNursing = (
-        combined.includes('nurse') ||
-        combined.includes('nursing') ||
-        combined.includes('rn ') ||
-        combined.includes(' rn') ||
-        combined.includes('registered') ||
-        combined.includes('icu') ||
-        combined.includes('critical care') ||
-        combined.includes('stepdown') ||
-        combined.includes('pcu') ||
-        combined.includes('telemetry')
-      );
-      
-      // Exclude non-job content
-      const isNotJob = (
-        combined.includes('nursing school') ||
-        combined.includes('rn program') ||
-        combined.includes('highest paid') ||
-        combined.includes('salary guide') ||
-        combined.includes('news') ||
-        combined.includes('abc7') ||
-        combined.includes('rally') ||
-        combined.includes('protest') ||
-        combined.includes('killed') ||
-        combined.includes('murdered') ||
-        combined.includes('ice ') ||
-        job.url.includes('learn.org') ||
-        job.url.includes('indeed.com/career') ||
-        job.url.includes('bandana.com') ||
-        job.url.includes('abc7news')
-      );
-      
-      // Must look like a job posting
-      const looksLikeJob = (
-        combined.includes('hiring') ||
-        combined.includes('apply') ||
-        combined.includes('job') ||
-        combined.includes('position') ||
-        combined.includes('career') ||
-        combined.includes('opportunity') ||
-        combined.includes('openings') ||
-        job.url.includes('jobs.') ||
-        job.url.includes('/job/') ||
-        job.url.includes('/careers') ||
-        job.url.includes('vivian.com') ||
-        job.url.includes('indeed.com/viewjob') ||
-        job.url.includes('sf.gov') ||
-        job.url.includes('governmentjobs.com') ||
-        job.url.includes('ziprecruiter.com')
-      );
-      
-      return isNursing && !isNotJob && looksLikeJob;
-    });
-
-    return NextResponse.json({ 
-      jobs: nursingJobs, 
-      queries,
-      total: nursingJobs.length,
+    return NextResponse.json({
+      jobs,
+      query,
+      total: jobs.length,
     });
   } catch (error) {
     console.error('Search error:', error);
