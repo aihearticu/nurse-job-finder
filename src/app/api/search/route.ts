@@ -14,21 +14,22 @@ async function searchBrave(query: string, count: number = 20): Promise<BraveResu
     throw new Error('BRAVE_API_KEY not configured');
   }
 
-  const params = new URLSearchParams({
-    q: query,
-    count: count.toString(),
-    country: 'us',
-  });
+  const url = `https://api.search.brave.com/res/v1/web/search?q=${encodeURIComponent(query)}&count=${count}`;
+  console.log('Brave URL:', url);
 
-  const response = await fetch(`https://api.search.brave.com/res/v1/web/search?${params}`, {
+  const response = await fetch(url, {
+    method: 'GET',
     headers: {
       'Accept': 'application/json',
+      'Accept-Encoding': 'gzip',
       'X-Subscription-Token': BRAVE_API_KEY,
     },
   });
 
   if (!response.ok) {
-    throw new Error(`Brave API error: ${response.status}`);
+    const errorText = await response.text();
+    console.error('Brave API error:', response.status, errorText);
+    throw new Error(`Brave API error: ${response.status} - ${errorText}`);
   }
 
   const data = await response.json();
