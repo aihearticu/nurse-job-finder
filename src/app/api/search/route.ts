@@ -5,8 +5,8 @@ const HOSPITAL_NAMES: Record<string, string> = {
   kaiser: 'Kaiser Permanente',
   sutter: 'Sutter Health',
   ucsf: 'UCSF Medical Center',
-  sfgeneral: 'Zuckerberg San Francisco General Hospital',
-  sfcounty: 'San Francisco Department of Public Health',
+  sfgeneral: 'Zuckerberg SF General Hospital SFGH',
+  sfcounty: 'San Francisco city county DPH',
   stanford: 'Stanford Health Care',
   dignity: 'Dignity Health',
   johnmuir: 'John Muir Health',
@@ -307,11 +307,15 @@ export async function POST(request: NextRequest) {
         combined.includes('position') ||
         combined.includes('career') ||
         combined.includes('opportunity') ||
+        combined.includes('openings') ||
         job.url.includes('jobs.') ||
         job.url.includes('/job/') ||
         job.url.includes('/careers') ||
         job.url.includes('vivian.com') ||
-        job.url.includes('indeed.com/viewjob')
+        job.url.includes('indeed.com/viewjob') ||
+        job.url.includes('sf.gov') ||
+        job.url.includes('governmentjobs.com') ||
+        job.url.includes('ziprecruiter.com')
       );
       
       return isNursing && !isNotJob && looksLikeJob;
