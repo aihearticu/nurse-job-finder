@@ -9,7 +9,7 @@ interface BraveResult {
   age?: string;
 }
 
-async function searchBrave(query: string, count: number = 20): Promise<BraveResult[]> {
+async function searchBrave(query: string, count: number = 10): Promise<BraveResult[]> {
   if (!BRAVE_API_KEY) {
     throw new Error('BRAVE_API_KEY not configured');
   }
