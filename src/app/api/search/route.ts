@@ -1,100 +1,248 @@
 import { NextRequest, NextResponse } from 'next/server';
 
-// Curated job sources - reliable direct links
-const JOB_SOURCES = {
-  kaiser: [
-    { title: 'Staff Nurse II ICU', facility: 'Kaiser Permanente', location: 'San Francisco', pay: '$85-101/hr', type: 'Part-time', unit: 'ICU', url: 'https://www.kaiserpermanentejobs.org/job/san-francisco/staff-nurse-ii-icu/641/82192568976' },
-    { title: 'ICU RN Rapid Response Per Diem', facility: 'Kaiser Permanente', location: 'Los Angeles', pay: '', type: 'Per Diem', unit: 'ICU', url: 'https://www.kaiserpermanentejobs.org/job/los-angeles/specialty-unit-icu-rn-rapid-response-perdiem-night/641/90577396656' },
-    { title: 'Float ICU/Tele 32hr Day', facility: 'Kaiser Permanente', location: 'South San Francisco', pay: '', type: 'Part-time', unit: 'ICU', url: 'https://www.kaiserpermanentejobs.org/job/south-san-francisco/staff-nurse-ii-float-icu-tele-32-hours-wk-day-shift/641/81516416816' },
-    { title: 'ICU 24hr Day Shift', facility: 'Kaiser Permanente', location: 'Oakland', pay: '', type: 'Part-time', unit: 'ICU', url: 'https://www.kaiserpermanentejobs.org/job/oakland/staff-nurse-ii-icu-24-hour-day-oakland/641/79886381040' },
-    { title: 'ICU Night 32hr', facility: 'Kaiser Permanente', location: 'San Leandro', pay: '', type: 'Part-time', unit: 'ICU', url: 'https://www.kaiserpermanentejobs.org/job/san-leandro/staff-nurse-ii-san-leandro-icu-night-32/641/86001203792' },
-    { title: 'Tele High Acuity Night', facility: 'Kaiser Permanente', location: 'South San Francisco', pay: '', type: 'Part-time', unit: 'Telemetry', url: 'https://www.kaiserpermanentejobs.org/job/south-san-francisco/staff-nurse-ii-telemetry-high-acuity-24-hour-wk-night-shift/641/82517882576' },
-    { title: 'ICU Per Diem Nights', facility: 'Kaiser Permanente', location: 'Baldwin Park', pay: '', type: 'Per Diem', unit: 'ICU', url: 'https://www.kaiserpermanentejobs.org/job/baldwin-park/specialty-unit-staff-rn-hospital-icu-per-diem-nights/641/78534163936' },
-    { title: 'Med/Surg Tele Per Diem', facility: 'Kaiser Permanente', location: 'San Diego', pay: '', type: 'Per Diem', unit: 'Telemetry', url: 'https://www.kaiserpermanentejobs.org/job/san-diego/staff-rn-med-surg-telemetry-per-diem-nights-san-diego/641/85715462448' },
-    { title: 'Float ICU/Med-Surg/Tele', facility: 'Kaiser Permanente', location: 'Vacaville', pay: '', type: 'Full-time', unit: 'ICU', url: 'https://www.kaiserpermanentejobs.org/job/vacaville/staff-nurse-ii-float-icu-med-surg-tele-float/641/86190259776' },
-  ],
-  sutter: [
-    { title: 'Staff Nurse II, ICU', facility: 'Sutter Health', location: 'Antioch', pay: '', type: 'Full-time', unit: 'ICU', url: 'https://jobs.sutterhealth.org/us/en/job/R-118869/Staff-Nurse-II-ICU' },
-    { title: 'Registered Nurse, ICU', facility: 'Sutter Health', location: 'Bay Area', pay: '', type: 'Full-time', unit: 'ICU', url: 'https://jobs.sutterhealth.org/us/en/job/R-121889/Registered-Nurse-ICU' },
-    { title: 'Staff Nurse II, ICU', facility: 'Sutter Health', location: 'Bay Area', pay: '', type: 'Full-time', unit: 'ICU', url: 'https://jobs.sutterhealth.org/us/en/job/R-120932/Staff-Nurse-II-ICU' },
-    { title: 'Staff Nurse II, ICU', facility: 'Sutter Health', location: 'Bay Area', pay: '', type: 'Full-time', unit: 'ICU', url: 'https://jobs.sutterhealth.org/us/en/job/R-120931/Staff-Nurse-II-ICU' },
-    { title: 'Registered Nurse II, ICU', facility: 'Sutter Health', location: 'Bay Area', pay: '', type: 'Full-time', unit: 'ICU', url: 'https://jobs.sutterhealth.org/us/en/job/R-113213/Registered-Nurse-II-ICU' },
-    { title: 'Staff Nurse II, ICU', facility: 'Sutter Health', location: 'Bay Area', pay: '', type: 'Full-time', unit: 'ICU', url: 'https://jobs.sutterhealth.org/us/en/job/R-118864/Staff-Nurse-II-ICU' },
-    { title: 'Staff Nurse II, Medical Telemetry', facility: 'Sutter Health', location: 'Bay Area', pay: '', type: 'Full-time', unit: 'Telemetry', url: 'https://jobs.sutterhealth.org/us/en/job/R-118152/Staff-Nurse-II-Medical-Telemetry' },
-    { title: 'Telemetry PCU5', facility: 'Sutter Health', location: 'Oakland', pay: '', type: 'Full-time', unit: 'PCU/Stepdown', url: 'https://www.linkedin.com/jobs/view/staff-nurse-ii-telemetry-pcu5-at-sutter-health-4273782244' },
-  ],
-  ucsf: [
-    { title: 'Registered Nurse, Per Diem', facility: 'UCSF Medical Center', location: 'San Francisco', pay: '', type: 'Per Diem', unit: 'General', url: 'https://www.linkedin.com/jobs/view/registered-nurse-per-diem-at-ucsf-health-4250399569' },
-  ],
-  other: [
-    { title: 'Travel Tele RN', facility: 'AMN Healthcare', location: 'San Francisco', pay: '$2200-3500/wk', type: 'Travel', unit: 'Telemetry', url: 'https://www.amnhealthcare.com/careers/nursing/apply/travel-telemetry-rn-nursing-jobs-in-san-francisco-ca-for-rn/' },
-  ],
-};
+// Exa MCP endpoint (free hosted, no API key needed)
+const EXA_MCP_URL = 'https://mcp.exa.ai/mcp';
+
+interface ExaResult {
+  title: string;
+  url: string;
+  text: string;
+  publishedDate?: string;
+}
+
+async function searchExa(query: string, numResults: number = 15): Promise<ExaResult[]> {
+  const response = await fetch(EXA_MCP_URL, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Accept': 'application/json, text/event-stream',
+    },
+    body: JSON.stringify({
+      jsonrpc: '2.0',
+      id: 1,
+      method: 'tools/call',
+      params: {
+        name: 'web_search_exa',
+        arguments: {
+          query,
+          numResults,
+          livecrawl: 'preferred',
+        },
+      },
+    }),
+  });
+
+  if (!response.ok) {
+    throw new Error(`Exa MCP error: ${response.status}`);
+  }
+
+  // Parse SSE response
+  const text = await response.text();
+  
+  // Extract JSON from SSE format (data: {...})
+  const dataMatch = text.match(/data: ({.*})/);
+  if (!dataMatch) {
+    console.error('No data in Exa response:', text.slice(0, 200));
+    return [];
+  }
+
+  const data = JSON.parse(dataMatch[1]);
+  
+  if (data.error) {
+    throw new Error(data.error.message);
+  }
+
+  // Parse the text content from Exa
+  const content = data.result?.content?.[0]?.text || '';
+  return parseExaText(content);
+}
+
+function parseExaText(text: string): ExaResult[] {
+  const results: ExaResult[] = [];
+  
+  // Split by "Title:" markers
+  const blocks = text.split(/(?=Title:)/);
+  
+  for (const block of blocks) {
+    if (!block.trim() || block.length < 20) continue;
+    
+    const titleMatch = block.match(/Title:\s*(.+?)(?:\n|Author:)/);
+    const urlMatch = block.match(/URL:\s*(.+?)(?:\n|$)/);
+    const dateMatch = block.match(/Published Date:\s*(.+?)(?:\n|$)/);
+    const textMatch = block.match(/Text:\s*([\s\S]+?)(?=Title:|$)/);
+    
+    if (titleMatch && urlMatch) {
+      results.push({
+        title: titleMatch[1].trim(),
+        url: urlMatch[1].trim(),
+        text: textMatch ? textMatch[1].trim().slice(0, 500) : '',
+        publishedDate: dateMatch ? dateMatch[1].trim() : undefined,
+      });
+    }
+  }
+  
+  return results;
+}
+
+function extractPay(text: string): { display: string; numeric: number } | null {
+  // Weekly pay patterns (travel nursing)
+  const weeklyMatch = text.match(/\$(\d{1,2},?\d{3})\s*(?:to|-)\s*\$?(\d{1,2},?\d{3})\s*(?:\/?\s*week|weekly)/i);
+  if (weeklyMatch) {
+    const low = parseFloat(weeklyMatch[1].replace(',', ''));
+    const high = parseFloat(weeklyMatch[2].replace(',', ''));
+    return { display: `$${weeklyMatch[1]}-$${weeklyMatch[2]}/wk`, numeric: (low + high) / 2 / 40 }; // Convert to hourly
+  }
+
+  // Hourly patterns
+  const hourlyPatterns = [
+    /\$(\d+(?:\.\d{2})?)\s*(?:to|-)\s*\$?(\d+(?:\.\d{2})?)\s*(?:\/?\s*(?:hr|hour)|per hour|hourly)?/i,
+    /\$(\d+(?:\.\d{2})?)\s*(?:\/?\s*(?:hr|hour)|per hour|hourly)/i,
+  ];
+
+  for (const pattern of hourlyPatterns) {
+    const match = text.match(pattern);
+    if (match) {
+      if (match[2]) {
+        const low = parseFloat(match[1]);
+        const high = parseFloat(match[2]);
+        return { display: `$${match[1]}-$${match[2]}/hr`, numeric: (low + high) / 2 };
+      }
+      return { display: `$${match[1]}/hr`, numeric: parseFloat(match[1]) };
+    }
+  }
+  return null;
+}
+
+function extractFacility(title: string, text: string): string {
+  const combined = `${title} ${text}`.toLowerCase();
+  const facilities = [
+    { pattern: /kaiser/i, name: 'Kaiser Permanente' },
+    { pattern: /sutter/i, name: 'Sutter Health' },
+    { pattern: /ucsf/i, name: 'UCSF Medical Center' },
+    { pattern: /stanford/i, name: 'Stanford Health Care' },
+    { pattern: /sf general|zuckerberg/i, name: 'SF General' },
+    { pattern: /dignity/i, name: 'Dignity Health' },
+    { pattern: /john muir/i, name: 'John Muir Health' },
+    { pattern: /sharp/i, name: 'Sharp Healthcare' },
+    { pattern: /incredible health/i, name: 'Incredible Health' },
+    { pattern: /vivian/i, name: 'Vivian Health' },
+    { pattern: /amn/i, name: 'AMN Healthcare' },
+    { pattern: /lead health/i, name: 'Lead Health' },
+  ];
+
+  for (const f of facilities) {
+    if (f.pattern.test(combined)) return f.name;
+  }
+  return 'Healthcare Facility';
+}
+
+function extractJobType(text: string): string {
+  const lower = text.toLowerCase();
+  if (lower.includes('travel')) return 'Travel';
+  if (lower.includes('per diem') || lower.includes('prn')) return 'Per Diem';
+  if (lower.includes('contract')) return 'Contract';
+  if (lower.includes('part-time')) return 'Part-time';
+  return 'Full-time';
+}
+
+function extractUnit(text: string): string {
+  const lower = text.toLowerCase();
+  if (lower.includes('icu') || lower.includes('intensive care') || lower.includes('critical care')) return 'ICU';
+  if (lower.includes('pcu') || lower.includes('stepdown') || lower.includes('progressive')) return 'PCU/Stepdown';
+  if (lower.includes('telemetry') || lower.includes('tele')) return 'Telemetry';
+  if (lower.includes('emergency') || lower.includes(' er ') || lower.includes(' ed ')) return 'Emergency';
+  if (lower.includes('med-surg') || lower.includes('med/surg')) return 'Med-Surg';
+  if (lower.includes('nicu') || lower.includes('neonatal')) return 'NICU';
+  if (lower.includes('cardiac') || lower.includes('cath')) return 'Cardiac';
+  return 'General';
+}
+
+function extractLocation(text: string): string {
+  // Try to extract city, state from text
+  const locMatch = text.match(/(?:in|at|near)\s+([A-Z][a-z]+(?:\s+[A-Z][a-z]+)?),?\s*(CA|California)/i);
+  if (locMatch) return `${locMatch[1]}, CA`;
+  
+  const cityMatch = text.match(/(San Francisco|Oakland|San Jose|Palo Alto|Berkeley|Vallejo|Antioch|Castro Valley|San Leandro|Pleasanton)/i);
+  if (cityMatch) return `${cityMatch[1]}, CA`;
+  
+  return 'Bay Area, CA';
+}
 
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { hospitals = ['kaiser', 'sutter', 'ucsf'], units = ['icu'], jobTypes = ['staff', 'per-diem'], location = 'San Francisco' } = body;
+    const { hospitals = [], units = ['icu'], jobTypes = [], location = 'San Francisco' } = body;
 
-    // Collect jobs from selected sources
-    let allJobs: any[] = [];
+    // Build search query
+    const unitNames = units.map((u: string) => {
+      const map: Record<string, string> = { 
+        icu: 'ICU intensive care', 
+        pcu: 'PCU stepdown progressive care', 
+        tele: 'telemetry', 
+        er: 'emergency ER', 
+        medsurg: 'med-surg',
+        cardiac: 'cardiac CCU',
+      };
+      return map[u] || u;
+    });
     
-    for (const hospital of hospitals) {
-      const jobs = JOB_SOURCES[hospital as keyof typeof JOB_SOURCES] || [];
-      allJobs = [...allJobs, ...jobs];
-    }
+    const hospitalNames = hospitals.filter((h: string) => h !== 'any').slice(0, 2);
+    const typeTerms = jobTypes.includes('per-diem') ? 'per diem PRN' : '';
+    const travelTerms = jobTypes.includes('travel') ? 'travel' : '';
     
-    // Always include "other" sources
-    allJobs = [...allJobs, ...JOB_SOURCES.other];
+    const query = `${unitNames[0] || 'ICU'} RN nurse jobs ${location} ${hospitalNames.join(' ')} ${typeTerms} ${travelTerms} hiring 2025 2026`.trim().replace(/\s+/g, ' ');
+    
+    console.log('Exa search query:', query);
 
-    // Filter by unit
-    const unitMap: Record<string, string> = {
-      icu: 'ICU',
-      pcu: 'PCU/Stepdown',
-      tele: 'Telemetry',
-      er: 'Emergency',
-      medsurg: 'Med-Surg',
-    };
-    
-    const selectedUnits = units.map((u: string) => unitMap[u] || u);
-    
-    let filteredJobs = allJobs.filter(job => 
-      selectedUnits.some((unit: string) => job.unit.toLowerCase().includes(unit.toLowerCase()))
-    );
+    // Search with Exa MCP
+    const results = await searchExa(query, 20);
+    console.log('Exa results:', results.length);
 
-    // Filter by job type
-    const typeMap: Record<string, string[]> = {
-      'staff': ['Full-time', 'Part-time'],
-      'per-diem': ['Per Diem'],
-      'travel': ['Travel'],
-      'contract': ['Contract'],
-    };
-    
-    const selectedTypes = jobTypes.flatMap((t: string) => typeMap[t] || [t]);
-    
-    filteredJobs = filteredJobs.filter(job =>
-      selectedTypes.some((type: string) => job.type.toLowerCase().includes(type.toLowerCase()))
-    );
-
-    // Add snippet and payNumeric
-    const jobs = filteredJobs.map(job => ({
-      ...job,
-      snippet: `${job.type} position at ${job.facility}`,
-      payNumeric: job.pay ? parseFloat(job.pay.replace(/[^0-9.]/g, '')) : 0,
-    }));
-
-    // Sort by pay
-    jobs.sort((a, b) => b.payNumeric - a.payNumeric);
+    // Transform to job listings
+    const jobs = results
+      .map((result) => {
+        const combined = `${result.title} ${result.text}`;
+        const pay = extractPay(combined);
+        
+        return {
+          title: result.title
+            .replace(/\s*\|.*$/, '')
+            .replace(/\s*-\s*LinkedIn.*$/i, '')
+            .replace(/\s+jobs?\s+in\s+.*/i, '')
+            .trim()
+            .slice(0, 80),
+          facility: extractFacility(result.title, result.text),
+          location: extractLocation(combined),
+          pay: pay?.display || '',
+          payNumeric: pay?.numeric || 0,
+          type: extractJobType(combined),
+          unit: extractUnit(combined),
+          url: result.url,
+          snippet: result.text.slice(0, 200).replace(/\n/g, ' '),
+          postedDate: result.publishedDate,
+        };
+      })
+      // Filter to actual nursing jobs
+      .filter((job) => {
+        const combined = `${job.title} ${job.snippet} ${job.url}`.toLowerCase();
+        const isNursing = /nurse|nursing|\brn\b|registered|icu|pcu|telemetry|critical care/i.test(combined);
+        const looksLikeJob = /job|hiring|apply|career|position|staff|travel/i.test(combined);
+        const isNotArticle = !/news|article|school|program|salary guide|highest paid|killed|lawsuit/i.test(combined);
+        return isNursing && looksLikeJob && isNotArticle;
+      })
+      // Sort by pay (highest first)
+      .sort((a, b) => b.payNumeric - a.payNumeric);
 
     return NextResponse.json({
       jobs,
+      query,
       total: jobs.length,
-      note: 'Showing curated job listings. Use CLI agent for live search.',
+      source: 'exa-mcp',
     });
   } catch (error) {
     console.error('Search error:', error);
     return NextResponse.json(
-      { error: error instanceof Error ? error.message : 'Search failed' },
+      { error: error instanceof Error ? error.message : 'Search failed', source: 'exa-mcp' },
       { status: 500 }
     );
   }
