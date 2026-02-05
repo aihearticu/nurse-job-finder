@@ -108,14 +108,13 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Location is required' }, { status: 400 });
     }
 
-    // Build search query
-    const hospitalNames = hospitals?.filter((h: string) => h !== 'any').slice(0, 2) || [];
+    // Build search query - keep it simple for Brave
     const unitNames = units?.map((u: string) => {
-      const map: Record<string, string> = { icu: 'ICU', pcu: 'PCU stepdown', tele: 'telemetry', er: 'emergency', medsurg: 'med-surg' };
+      const map: Record<string, string> = { icu: 'ICU', pcu: 'PCU', tele: 'telemetry', er: 'emergency', medsurg: 'med-surg' };
       return map[u] || u;
-    }).slice(0, 2) || ['ICU'];
+    }) || ['ICU'];
     
-    const query = `${unitNames.join(' OR ')} RN nurse jobs ${location} ${hospitalNames.join(' ')} hiring 2025 2026`.trim();
+    const query = `${unitNames[0]} RN nursing jobs ${location} hiring`;
     console.log('Search query:', query);
 
     const results = await searchBrave(query, 25);
