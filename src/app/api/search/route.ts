@@ -17,8 +17,7 @@ async function searchBrave(query: string, count: number = 20): Promise<BraveResu
   const params = new URLSearchParams({
     q: query,
     count: count.toString(),
-    freshness: 'pm',
-    country: 'US',
+    country: 'us',
   });
 
   const response = await fetch(`https://api.search.brave.com/res/v1/web/search?${params}`, {
